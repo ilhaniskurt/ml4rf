@@ -1,0 +1,8 @@
+{
+    "arch": "k",
+    "dropout_rate": 0.09370233656673196,
+    "learning_rate": 0.00048496619835891244,
+    "batch_size": 512,
+    "activation": "relu",
+    "lr_scheduler_type": "none"
+}

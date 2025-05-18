@@ -1,0 +1,46 @@
+Using device: cuda
+Identified 15 frequency-related features and 6 other features
+
+==================================================
+Training frequency-aware model for S21
+==================================================
+Epoch 10/200, Train Loss: 0.572542, Val Loss: 0.491979, LR: 0.00200000
+Epoch 20/200, Train Loss: 0.491452, Val Loss: 0.390267, LR: 0.00200000
+Epoch 30/200, Train Loss: 0.448655, Val Loss: 5.632973, LR: 0.00200000
+Epoch 40/200, Train Loss: 0.443983, Val Loss: 0.370182, LR: 0.00170000
+Epoch 50/200, Train Loss: 0.387322, Val Loss: 0.387145, LR: 0.00144500
+Epoch 60/200, Train Loss: 0.378890, Val Loss: 0.413280, LR: 0.00144500
+Epoch 70/200, Train Loss: 0.360920, Val Loss: 0.341764, LR: 0.00104401
+Epoch 80/200, Train Loss: 0.353688, Val Loss: 0.367151, LR: 0.00104401
+Epoch 90/200, Train Loss: 0.352128, Val Loss: 0.335613, LR: 0.00088741
+Epoch 100/200, Train Loss: 0.349183, Val Loss: 0.339924, LR: 0.00064115
+Epoch 110/200, Train Loss: 0.335221, Val Loss: 0.303835, LR: 0.00054498
+Epoch 120/200, Train Loss: 0.329720, Val Loss: 0.333137, LR: 0.00046323
+Epoch 130/200, Train Loss: 0.328165, Val Loss: 0.311658, LR: 0.00039375
+Epoch 140/200, Train Loss: 0.323303, Val Loss: 0.308199, LR: 0.00033469
+Epoch 150/200, Train Loss: 0.322347, Val Loss: 0.315513, LR: 0.00028448
+Epoch 160/200, Train Loss: 0.323557, Val Loss: 0.317878, LR: 0.00020554
+Epoch 170/200, Train Loss: 0.317168, Val Loss: 0.298245, LR: 0.00017471
+Epoch 180/200, Train Loss: 0.314854, Val Loss: 0.295877, LR: 0.00012623
+Early stopping at epoch 182
+
+Performance metrics for S21:
+  S_deemb(2,1)_real:
+    RMSE: 0.654196
+    R²: 0.975982
+    MAE: 0.175562
+    MAPE: 4102.12%
+  S_deemb(2,1)_imag:
+    RMSE: 0.415885
+    R²: 0.965996
+    MAE: 0.126722
+    MAPE: 112.72%
+
+Average metrics for S21:
+  R²: 0.970989
+  RMSE: 0.535041
+  MAE: 0.151142
+  MAPE: 2107.42%
+
+Total training time: 193.67 seconds
+Models and results saved to freq_aware_results/
