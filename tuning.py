@@ -8,9 +8,9 @@ import optuna
 import pandas as pd
 import torch
 
-from helpers.base.loaders import prepare_data_for_pytorch
-from helpers.base.models import FrequencyAwareNetwork
-from helpers.base.trainers import train_model
+from helpers.loaders import prepare_data_for_pytorch
+from helpers.models import FrequencyAwareNetwork
+from helpers.trainers import train_model
 from helpers.evals import evaluate_model
 from helpers.spliters import create_frequency_based_split
 

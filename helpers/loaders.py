@@ -8,10 +8,6 @@ def prepare_data_for_pytorch(
 ):
     scaler_y = None
 
-    # Extract freq tensors before dropping any columns
-    freq_train_tensor = torch.tensor(X_train["freq"].values, dtype=torch.float32)
-    freq_test_tensor = torch.tensor(X_test["freq"].values, dtype=torch.float32)
-
     X_train_tensor = torch.tensor(X_train.values, dtype=torch.float32)
     Y_train_tensor = torch.tensor(Y_train.values, dtype=torch.float32)
     X_test_tensor = torch.tensor(X_test.values, dtype=torch.float32)
@@ -24,16 +20,13 @@ def prepare_data_for_pytorch(
         Y_test_scaled = scaler_y.transform(Y_test_tensor)
         Y_test_tensor = torch.tensor(Y_test_scaled, dtype=torch.float32)
 
-    # Now include freq in training dataset
-    train_dataset = TensorDataset(X_train_tensor, Y_train_tensor, freq_train_tensor)
     train_loader = DataLoader(
-        train_dataset,
+        TensorDataset(X_train_tensor, Y_train_tensor),
         batch_size=batch_size,
         shuffle=True,
         num_workers=4,
         pin_memory=True,
     )
-
     return (
         X_train_tensor,
         Y_train_tensor,
@@ -41,5 +34,4 @@ def prepare_data_for_pytorch(
         Y_test_tensor,
         train_loader,
         scaler_y,
-        freq_test_tensor,
     )

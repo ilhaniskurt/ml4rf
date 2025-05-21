@@ -1,29 +1,35 @@
+from typing import Optional
+
 import torch
+from torch import nn
+from torch.optim import Optimizer
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 
 def train_model(
-    model,
-    train_loader,
-    X_test,
-    Y_test,
-    criterion,
-    optimizer,
-    device,
-    epochs=150,
-    patience=15,
-    scheduler_str: str | None = None,
-    tqdm_position=0,
-    tqdm_disable=False,
-    suffix=None,
-    freq_test=None,  # NEW: for validation loss
-):
+    model: nn.Module,
+    train_loader: DataLoader,
+    X_test: torch.Tensor,
+    Y_test: torch.Tensor,
+    criterion: nn.Module,
+    optimizer: Optimizer,
+    device: torch.device,
+    epochs: int = 150,
+    patience: int = 15,
+    scheduler_str: Optional[str] = None,
+    tqdm_position: int = 0,
+    tqdm_disable: bool = False,
+    suffix: Optional[str] = None,
+    warmup_epochs: int = 5,
+    max_grad_norm: float = 1.0,
+) -> nn.Module:
     model.to(device)
     best_model_state = None
     best_loss = float("inf")
     patience_counter = 0
+    initial_lr = optimizer.param_groups[0]["lr"]
 
-    # Initialize scheduler with sensible defaults
     scheduler = None
     if scheduler_str:
         if scheduler_str == "step":
@@ -43,7 +49,7 @@ def train_model(
         elif scheduler_str == "one_cycle":
             scheduler = torch.optim.lr_scheduler.OneCycleLR(
                 optimizer,
-                max_lr=optimizer.param_groups[0]["lr"],
+                max_lr=initial_lr,
                 steps_per_epoch=len(train_loader),
                 epochs=epochs,
                 pct_start=0.3,
@@ -65,22 +71,31 @@ def train_model(
     ) as pbar:
         for epoch in pbar:
             model.train()
-            for batch in train_loader:
-                if len(batch) == 3:
-                    xb, yb, freq = batch
-                    xb, yb, freq = xb.to(device), yb.to(device), freq.to(device)
-                    pred = model(xb)
-                    loss = criterion(pred, yb, freq)
-                else:
-                    xb, yb = batch
-                    xb, yb = xb.to(device), yb.to(device)
-                    pred = model(xb)
-                    loss = criterion(pred, yb)
+            # Warm-up learning rate (if no OneCycleLR)
+            if (
+                warmup_epochs > 0
+                and epoch < warmup_epochs
+                and scheduler_str != "one_cycle"
+            ):
+                lr_scale = (epoch + 1) / warmup_epochs
+                for param_group in optimizer.param_groups:
+                    param_group["lr"] = initial_lr * lr_scale
 
+            for xb, yb in train_loader:
+                xb, yb = xb.to(device), yb.to(device)
                 optimizer.zero_grad()
+                loss = criterion(model(xb), yb)
                 loss.backward()
+
+                # ✅ Gradient clipping
+                if max_grad_norm is not None:
+                    torch.nn.utils.clip_grad_norm_(
+                        model.parameters(), max_norm=max_grad_norm
+                    )
+
                 optimizer.step()
 
+                # ✅ Step OneCycleLR scheduler per batch
                 if scheduler and isinstance(
                     scheduler, torch.optim.lr_scheduler.OneCycleLR
                 ):
@@ -90,14 +105,9 @@ def train_model(
             model.eval()
             with torch.no_grad():
                 val_preds = model(X_test.to(device))
-                if freq_test is not None:  # required for custom validation loss
-                    val_loss = criterion(
-                        val_preds, Y_test.to(device), freq_test.to(device)
-                    ).item()
-                else:
-                    val_loss = criterion(val_preds, Y_test.to(device)).item()
+                val_loss = criterion(val_preds, Y_test.to(device)).item()
 
-            # Scheduler step
+            # ✅ Step other schedulers per epoch
             if scheduler and not isinstance(
                 scheduler, torch.optim.lr_scheduler.OneCycleLR
             ):
@@ -106,7 +116,7 @@ def train_model(
                 else:
                     scheduler.step()
 
-            # Early stopping
+            # ✅ Early stopping
             if val_loss < best_loss:
                 best_loss = val_loss
                 best_model_state = model.state_dict().copy()
@@ -117,7 +127,6 @@ def train_model(
                     pbar.write("Early stopping triggered.")
                     break
 
-            # Progress bar update
             pbar.set_postfix(
                 {
                     "Epoch": epoch + 1,
@@ -129,4 +138,5 @@ def train_model(
 
     if best_model_state is not None:
         model.load_state_dict(best_model_state)
+
     return model

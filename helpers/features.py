@@ -112,6 +112,21 @@ def __add_vb_vc_features(df: pd.DataFrame):
     return df
 
 
+def __identify_frequency_features(columns):
+    """Identify frequency-related features in the dataset."""
+    freq_features = [
+        i
+        for i, col in enumerate(columns)
+        if "freq" in col.lower() or "band" in col.lower()
+    ]
+    other_features = [i for i in range(len(columns)) if i not in freq_features]
+
+    print(
+        f"Identified {len(freq_features)} frequency-related features and {len(other_features)} other features"
+    )
+    return freq_features, other_features
+
+
 def process_dataset(df: pd.DataFrame, test_size: float = 0.2, random_state: int = 42):
     feature_columns = ["freq", "vb", "vc", "DEV_GEOM_L", "NUM_OF_TRANS_RF"]
     label_columns = [
@@ -166,6 +181,9 @@ def process_dataset(df: pd.DataFrame, test_size: float = 0.2, random_state: int 
     if X_test is not None:
         X_test = X_test.fillna(0)
 
+    # Identify frequency-related features (Assuming column orders are the same for train and test)
+    freq_idx, other_idx = __identify_frequency_features(X_train.columns)
+
     return (
         X_train,
         pd.DataFrame(Y_raw_train),
@@ -173,4 +191,6 @@ def process_dataset(df: pd.DataFrame, test_size: float = 0.2, random_state: int 
         pd.DataFrame(Y_raw_test),
         voltage_scaler,
         freq_scaler,
+        freq_idx,
+        other_idx,
     )

@@ -1,9 +1,0 @@
-{
-  "arch": "d",
-  "hidden_sizes": [256, 512, 1024, 512],
-  "dropout_rate": 0.37167434898212187,
-  "learning_rate": 0.0015590880906071842,
-  "batch_size": 1024,
-  "activation": "silu",
-  "lr_scheduler_type": "one_cycle"
-}

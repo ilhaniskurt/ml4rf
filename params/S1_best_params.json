@@ -1,9 +1,0 @@
-{
-  "arch": "a",
-  "hidden_sizes": [64, 128, 256],
-  "dropout_rate": 0.48841741042924414,
-  "learning_rate": 0.000220554720491099,
-  "batch_size": 256,
-  "activation": "gelu",
-  "lr_scheduler_type": "cosine_annealing"
-}
