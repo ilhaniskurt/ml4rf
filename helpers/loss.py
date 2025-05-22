@@ -4,6 +4,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+def huber_logcosh_loss(pred, target):
+    # Combined loss: 70% Huber, 30% Log-cosh
+    huber = nn.HuberLoss(delta=0.1)(pred, target)
+    logcosh = torch.mean(torch.log(torch.cosh(pred - target)))
+    return 0.7 * huber + 0.3 * logcosh
+
+
 class ScientificDerivedLoss(nn.Module):
     def __init__(self, Z0=50):
         super(ScientificDerivedLoss, self).__init__()

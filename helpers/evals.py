@@ -58,10 +58,10 @@ def evaluate_model_with_scaling(
     # Inverse transform if scaler was used
     if y_scaler is not None:
         predictions_original = y_scaler.inverse_transform(predictions)
-        y_test_original = Y_test[labels].values
     else:
         predictions_original = predictions
-        y_test_original = Y_test[labels].values
+
+    y_test_original = Y_test[labels].values
 
     # Calculate metrics
     metrics = {}
@@ -109,3 +109,42 @@ def evaluate_model_with_scaling(
         avg_metrics["mape"] = np.mean([metrics[comp]["mape"] for comp in labels])
 
     return metrics, avg_metrics, predictions_original
+
+
+def evaluate_component_model(
+    model: nn.Module,
+    X_test_tensor: torch.Tensor,
+    Y_test: pd.DataFrame,
+    labels: list[str],
+    model_name: str,
+    real_min,
+    real_max,
+    imag_min,
+    imag_max,
+    device: torch.device,
+    y_scaler: StandardScaler,
+):
+    model.eval()
+    device = next(model.parameters()).device
+    with torch.no_grad():
+        predictions = model(X_test_tensor.to(device)).cpu().numpy()
+
+    predictions = y_scaler.inverse_transform(predictions)
+
+    if model_name == "S21_real":
+        predictions = np.clip(predictions, real_min, real_max)
+    else:
+        predictions = np.clip(predictions, imag_min, imag_max)
+
+    y_true = Y_test[labels].values
+    y_pred = predictions.flatten()
+
+    metrics = {
+        "mse": mean_squared_error(y_true, y_pred),
+        "rmse": np.sqrt(mean_squared_error(y_true, y_pred)),
+        "r2": r2_score(y_true, y_pred),
+        "mae": mean_absolute_error(y_true, y_pred),
+        "mape": __mean_absolute_percentage_error(y_true, y_pred),
+    }
+
+    return metrics, predictions

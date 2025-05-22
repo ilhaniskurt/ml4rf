@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 
-def train_model(
+def train_frequency_aware_model(
     model: nn.Module,
     train_loader: DataLoader,
     X_test: torch.Tensor,
@@ -136,6 +136,134 @@ def train_model(
                 }
             )
 
+    if best_model_state is not None:
+        model.load_state_dict(best_model_state)
+
+    return model
+
+
+def train_component_model(
+    model: nn.Module,
+    model_name: str,
+    train_loader: DataLoader,
+    X_test: torch.Tensor,
+    Y_test: torch.Tensor,
+    criterion,
+    optimizer: Optimizer,
+    device: torch.device,
+    epochs: int = 150,
+    patience: int = 15,
+    scheduler_type: Optional[str] = None,
+    tqdm_position: int = 0,
+    tqdm_disable: bool = False,
+    suffix: Optional[str] = None,
+) -> nn.Module:
+    model.to(device)
+    best_val_loss = float("inf")
+    best_model_state = None
+    patience_counter = 0
+    train_losses = []
+    val_losses = []
+
+    initial_lr = optimizer.param_groups[0]["lr"]
+
+    # Use appropriate scheduler based on component and settings
+    if scheduler_type == "cosine_annealing":
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=epochs, eta_min=1e-6
+        )
+    elif scheduler_type == "one_cycle":
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            optimizer,
+            max_lr=initial_lr * 10,
+            steps_per_epoch=len(train_loader),
+            epochs=epochs,
+        )
+    else:  # reduce_on_plateau default
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode="min", factor=0.5, patience=5
+        )
+
+    with tqdm(
+        range(epochs),
+        desc="Training Epochs" if not suffix else f"Training Epochs ({suffix})",
+        position=tqdm_position,
+        disable=tqdm_disable,
+    ) as pbar:
+        for epoch in pbar:
+            # Training
+            model.train()
+            running_loss = 0.0
+
+            for inputs, targets in train_loader:
+                optimizer.zero_grad()
+                outputs = model(inputs.to(device))
+                loss = criterion(outputs, targets.to(device))
+
+                # Add L2 regularization for real component (in addition to optimizer's weight_decay)
+                if model_name == "S21_real":
+                    l2_reg = 0
+                    for name, param in model.named_parameters():
+                        if "weight" in name:  # Apply only to weights, not biases
+                            l2_reg += torch.norm(param, 2)
+                    loss += 1e-5 * l2_reg
+
+                loss.backward()
+
+                # Component-specific gradient clipping
+                if model_name == "S21_real":
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.5)
+                else:
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
+                optimizer.step()
+
+                # Update OneCycleLR scheduler if used
+                if isinstance(scheduler, torch.optim.lr_scheduler.OneCycleLR):
+                    scheduler.step()
+
+                running_loss += loss.item()
+
+            # Calculate average loss
+            avg_train_loss = running_loss / len(train_loader)
+            train_losses.append(avg_train_loss)
+
+            # Validation
+            model.eval()
+            with torch.no_grad():
+                test_outputs = model(X_test.to(device))
+                val_loss = criterion(test_outputs, Y_test.to(device)).item()
+                val_losses.append(val_loss)
+
+            # Update scheduler
+            if isinstance(scheduler, torch.optim.lr_scheduler.OneCycleLR):
+                scheduler.step()
+            elif scheduler_type == "reduce_on_plateau":
+                scheduler.step(val_loss)
+            # one_cycle scheduler is updated after each batch
+
+            # Early stopping
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                best_model_state = model.state_dict().copy()
+                patience_counter = 0
+
+            else:
+                patience_counter += 1
+                if patience_counter >= patience:
+                    pbar.write("Early stopping triggered.")
+                    break
+
+            pbar.set_postfix(
+                {
+                    "Epoch": epoch + 1,
+                    "Val Loss": f"{val_loss:.6f}",
+                    "Best": f"{best_val_loss:.6f}",
+                    "LR": optimizer.param_groups[0]["lr"],
+                }
+            )
+
+    # Load best model
     if best_model_state is not None:
         model.load_state_dict(best_model_state)
 

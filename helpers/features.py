@@ -2,10 +2,12 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 
-from helpers.spliters import create_frequency_based_split
+from helpers.spliters import create_extrapolation_split, create_frequency_based_split
 
 
-def __preprocess_frequency(X_train: pd.DataFrame, X_test: pd.DataFrame):
+def __preprocess_frequency(
+    X_train: pd.DataFrame, X_test: pd.DataFrame, mode="interpolation"
+):
     X_train_processed = X_train.copy()
     X_test_processed = X_test.copy()
 
@@ -82,6 +84,12 @@ def __preprocess_frequency(X_train: pd.DataFrame, X_test: pd.DataFrame):
 
                 if data is X_test_processed:
                     data.loc[mask, col_name] = data.loc[mask, col_name].clip(0, 1)
+
+    if mode == "extrapolation":
+        max_freq = X_train["freq"].max()
+        X_train_processed["freq_ratio"] = X_train["freq"] / max_freq
+        X_test_processed["freq_ratio"] = X_test["freq"] / max_freq
+
     return X_train_processed, X_test_processed, freq_scaler
 
 
@@ -127,7 +135,12 @@ def __identify_frequency_features(columns):
     return freq_features, other_features
 
 
-def process_dataset(df: pd.DataFrame, test_size: float = 0.2, random_state: int = 42):
+def process_dataset(
+    df: pd.DataFrame,
+    test_size: float = 0.2,
+    random_state: int = 42,
+    split_mode="interpolation",
+):
     feature_columns = ["freq", "vb", "vc", "DEV_GEOM_L", "NUM_OF_TRANS_RF"]
     label_columns = [
         "S_deemb(1,1)_real",
@@ -144,9 +157,13 @@ def process_dataset(df: pd.DataFrame, test_size: float = 0.2, random_state: int 
 
     X = df_clean[feature_columns].copy()
     Y = df_clean[label_columns].copy()
-    train_mask, test_mask = create_frequency_based_split(
-        df_clean, test_size=test_size, random_state=random_state, mute=True
-    )
+
+    if split_mode == "extrapolation":
+        train_mask, test_mask = create_extrapolation_split(df_clean)
+    else:
+        train_mask, test_mask = create_frequency_based_split(
+            df_clean, test_size=test_size, random_state=random_state, mute=True
+        )
 
     X_raw_train = X[train_mask].copy()
     X_raw_test = X[test_mask].copy()
@@ -168,7 +185,9 @@ def process_dataset(df: pd.DataFrame, test_size: float = 0.2, random_state: int 
     X_train = __encode_num_of_trans_rf(X_train)
     X_test = __encode_num_of_trans_rf(X_test)
 
-    X_train, X_test, freq_scaler = __preprocess_frequency(X_train, X_test)
+    X_train, X_test, freq_scaler = __preprocess_frequency(
+        X_train, X_test, mode=split_mode
+    )
 
     # Fill NaN values with 0 for freq_pos_in_band columns
     for i in range(1, 6):

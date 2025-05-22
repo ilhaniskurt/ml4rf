@@ -27,9 +27,7 @@ class FrequencyAwareNetwork(nn.Module):
         prev_size = freq_features
         for h_size in hidden_sizes[:2]:  # First two hidden sizes for branches
             freq_layers.append(nn.Linear(prev_size, h_size))
-            freq_layers.append(
-                activation_fn
-            )  # Using SiLU (Swish) activation for better performance
+            freq_layers.append(activation_fn)
             freq_layers.append(nn.BatchNorm1d(h_size))
             freq_layers.append(nn.Dropout(dropout_rate))
             prev_size = h_size
@@ -105,3 +103,116 @@ def load_model(path, device):
     model.to(device)
     model.eval()
     return model
+
+
+class ComponentModel(nn.Module):
+    def __init__(
+        self,
+        hidden_sizes,
+        dropout_rate,
+        freq_indices,
+        other_indices,
+        activation,
+        model_name: str,
+        freq_hidden_sizes: list[int] | None = None,
+        other_hidden_sizes: list[int] | None = None,
+    ):
+        super().__init__()
+        self.freq_indices = freq_indices
+        self.other_indices = other_indices
+
+        if freq_hidden_sizes is None:
+            freq_hidden_sizes = [64, 128]
+        if other_hidden_sizes is None:
+            other_hidden_sizes = [64, 128]
+
+        activation_fn = None
+        if activation == "silu":
+            activation_fn = nn.SiLU()
+        elif activation == "relu":
+            activation_fn = nn.ReLU()
+        elif activation == "gelu":
+            activation_fn = nn.GELU()
+        else:
+            raise ValueError(f"Unsupported activation function: {activation}")
+
+        # Frequency branch with custom architecture
+        freq_layers = []
+        input_size_freq = len(freq_indices)
+        for i in range(len(freq_hidden_sizes)):
+            out_size = freq_hidden_sizes[i]
+            freq_layers.append(nn.Linear(input_size_freq, out_size))
+            freq_layers.append(nn.BatchNorm1d(out_size))
+            freq_layers.append(activation_fn)
+            freq_layers.append(nn.Dropout(dropout_rate))
+            input_size_freq = out_size
+        self.freq_layers = nn.Sequential(*freq_layers)
+
+        # Other parameters branch with custom architecture
+        other_layers = []
+        input_size_other = len(other_indices)
+        for i in range(len(other_hidden_sizes)):
+            out_size = other_hidden_sizes[i]
+            other_layers.append(nn.Linear(input_size_other, out_size))
+            other_layers.append(nn.BatchNorm1d(out_size))
+            other_layers.append(activation_fn)
+            other_layers.append(nn.Dropout(dropout_rate))
+            input_size_other = out_size
+        self.other_layers = nn.Sequential(*other_layers)
+
+        # Attention mechanism for better integration of branches
+        self.attention = nn.Sequential(
+            nn.Linear(freq_hidden_sizes[-1] + other_hidden_sizes[-1], 64),
+            activation_fn,
+            nn.Linear(64, 2),
+            nn.Softmax(dim=1),
+        )
+
+        # Combined layers
+        combined_size = freq_hidden_sizes[-1] + other_hidden_sizes[-1]
+
+        combined_layers = []
+        input_size_combined = combined_size
+        for i in range(len(hidden_sizes) - 1):
+            combined_layers.append(nn.Linear(input_size_combined, hidden_sizes[i]))
+            combined_layers.append(nn.BatchNorm1d(hidden_sizes[i]))
+            combined_layers.append(activation_fn)
+            combined_layers.append(nn.Dropout(dropout_rate))
+            input_size_combined = hidden_sizes[i]
+
+        # Output layer
+        combined_layers.append(
+            nn.Linear(
+                hidden_sizes[-2] if len(hidden_sizes) > 1 else input_size_combined,
+                1,
+            )
+        )
+
+        # Apply tanh only to real component to constrain outputs
+        if model_name == "S21_real":
+            combined_layers.append(nn.Tanh())
+
+        self.combined_layers = nn.Sequential(*combined_layers)
+
+    def forward(self, x):
+        # Extract frequency and other inputs
+        freq_input = x[:, self.freq_indices]
+        other_input = x[:, self.other_indices]
+
+        # Process through respective branches
+        freq_features = self.freq_layers(freq_input)
+        other_features = self.other_layers(other_input)
+
+        # Combine features
+        combined = torch.cat([freq_features, other_features], dim=1)
+
+        # Apply attention mechanism
+        attention_weights = self.attention(combined)
+        weighted_freq = freq_features * attention_weights[:, 0].unsqueeze(1)
+        weighted_other = other_features * attention_weights[:, 1].unsqueeze(1)
+
+        # New combined features with attention
+        combined_attention = torch.cat([weighted_freq, weighted_other], dim=1)
+
+        # Final processing
+        return self.combined_layers(combined_attention)

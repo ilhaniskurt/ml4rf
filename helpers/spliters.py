@@ -111,3 +111,97 @@ def create_frequency_based_split(df, test_size=0.2, random_state=42, mute=False)
         print(f"Test set: {test_mask.sum()} samples ({test_mask.mean():.2%})")
 
     return train_mask, test_mask
+
+
+def create_extrapolation_split(
+    df,
+    train_threshold=40e9,
+    test_freqs: list[int] = [
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+    ],
+    mute=False,
+):
+    """
+    Create a train-test split for extrapolation where:
+    - Training set contains all data with frequency <= train_threshold
+    - Test set contains specified frequencies above the threshold
+
+    Parameters:
+    -----------
+    df : pandas DataFrame
+        DataFrame containing a 'freq' column in Hz
+    train_threshold : float, default=60e9
+        Maximum frequency (in Hz) to include in training data
+    test_freqs : list, default=[61, 62, 63, 64, 65]
+        Specific frequencies (in GHz) to include in test set
+
+    Returns:
+    --------
+    train_mask : numpy array
+        Boolean mask for training data
+    test_mask : numpy array
+        Boolean mask for test data
+    """
+
+    # Convert test frequencies from GHz to Hz
+    test_freqs_hz = np.array(test_freqs) * 1e9
+
+    # Get all unique frequency values
+    unique_freqs = np.sort(df["freq"].unique())
+
+    # Create training mask: include all frequencies <= threshold
+    train_mask = df["freq"] <= train_threshold
+
+    # Create test mask: include only the specified test frequencies
+    test_mask = df["freq"].isin(test_freqs_hz)
+
+    # Print dataset information
+    train_freqs = unique_freqs[unique_freqs <= train_threshold]
+    test_freqs_found = np.intersect1d(unique_freqs, test_freqs_hz)
+    test_freqs_missing = np.setdiff1d(test_freqs_hz, unique_freqs)
+
+    if not mute:
+        print(
+            f"Found {len(unique_freqs)} unique frequency values from {unique_freqs.min() / 1e9:.2f} GHz to {unique_freqs.max() / 1e9:.2f} GHz"
+        )
+
+        print(
+            f"Training on {len(train_freqs)} unique frequencies from {train_freqs.min() / 1e9:.2f} GHz to {train_freqs.max() / 1e9:.2f} GHz"
+        )
+        print(f"Training set: {train_mask.sum()} samples")
+
+        print(
+            f"Testing on {len(test_freqs_found)} unique frequencies: {test_freqs_found / 1e9} GHz"
+        )
+        print(f"Test set: {test_mask.sum()} samples")
+
+    if len(test_freqs_missing) > 0:
+        print(
+            f"Warning: {len(test_freqs_missing)} requested test frequencies not found in data: {test_freqs_missing / 1e9} GHz"
+        )
+
+    return train_mask, test_mask
