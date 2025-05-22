@@ -136,7 +136,7 @@ def evaluate_component_model(
     else:
         predictions = np.clip(predictions, imag_min, imag_max)
 
-    y_true = Y_test[labels].values
+    y_true = Y_test[labels].values.flatten()
     y_pred = predictions.flatten()
 
     metrics = {
