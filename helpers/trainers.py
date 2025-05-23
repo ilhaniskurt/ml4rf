@@ -237,12 +237,14 @@ def train_component_model(
                 val_loss = criterion(test_outputs, Y_test.to(device)).item()
                 val_losses.append(val_loss)
 
-            # Update scheduler
-            if isinstance(scheduler, torch.optim.lr_scheduler.OneCycleLR):
-                scheduler.step()
-            elif scheduler_type == "reduce_on_plateau":
-                scheduler.step(val_loss)
-            # one_cycle scheduler is updated after each batch
+            # Step other schedulers per epoch
+            if scheduler and not isinstance(
+                scheduler, torch.optim.lr_scheduler.OneCycleLR
+            ):
+                if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                    scheduler.step(val_loss)
+                else:
+                    scheduler.step()
 
             # Early stopping
             if val_loss < best_val_loss:
