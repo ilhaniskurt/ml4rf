@@ -168,7 +168,7 @@ def create_extrapolation_split(
     """
 
     # Convert test frequencies from GHz to Hz
-    test_freqs_hz = np.array(test_freqs) * 1e9
+    test_freqs_hz = np.array(test_freqs, dtype=float) * 1e9
 
     # Get all unique frequency values
     unique_freqs = np.sort(df["freq"].unique())

@@ -1,5 +1,6 @@
 from typing import Optional
 
+import optuna
 import torch
 from torch import nn
 from torch.optim import Optimizer
@@ -157,7 +158,8 @@ def train_component_model(
     tqdm_position: int = 0,
     tqdm_disable: bool = False,
     suffix: Optional[str] = None,
-) -> nn.Module:
+    trial: optuna.Trial | None = None,
+):
     model.to(device)
     best_val_loss = float("inf")
     best_model_state = None
@@ -248,7 +250,11 @@ def train_component_model(
                 best_model_state = model.state_dict().copy()
                 patience_counter = 0
 
-            else:
+            if trial is not None:
+                trial.report(val_loss, epoch)
+                if trial.should_prune():
+                    raise optuna.TrialPruned()
+            elif val_loss >= best_val_loss:
                 patience_counter += 1
                 if patience_counter >= patience:
                     pbar.write("Early stopping triggered.")
@@ -267,4 +273,4 @@ def train_component_model(
     if best_model_state is not None:
         model.load_state_dict(best_model_state)
 
-    return model
+    return model, best_val_loss

@@ -120,7 +120,7 @@ def __add_vb_vc_features(df: pd.DataFrame):
     return df
 
 
-def __identify_frequency_features(columns):
+def __identify_frequency_features(columns, mute=False):
     """Identify frequency-related features in the dataset."""
     freq_features = [
         i
@@ -129,9 +129,10 @@ def __identify_frequency_features(columns):
     ]
     other_features = [i for i in range(len(columns)) if i not in freq_features]
 
-    print(
-        f"Identified {len(freq_features)} frequency-related features and {len(other_features)} other features"
-    )
+    if not mute:
+        print(
+            f"Identified {len(freq_features)} frequency-related features and {len(other_features)} other features"
+        )
     return freq_features, other_features
 
 
@@ -140,6 +141,7 @@ def process_dataset(
     test_size: float = 0.2,
     random_state: int = 42,
     split_mode="interpolation",
+    mute=False,
 ):
     feature_columns = ["freq", "vb", "vc", "DEV_GEOM_L", "NUM_OF_TRANS_RF"]
     label_columns = [
@@ -159,10 +161,10 @@ def process_dataset(
     Y = df_clean[label_columns].copy()
 
     if split_mode == "extrapolation":
-        train_mask, test_mask = create_extrapolation_split(df_clean)
+        train_mask, test_mask = create_extrapolation_split(df_clean, mute=mute)
     else:
         train_mask, test_mask = create_frequency_based_split(
-            df_clean, test_size=test_size, random_state=random_state, mute=True
+            df_clean, test_size=test_size, random_state=random_state, mute=mute
         )
 
     X_raw_train = X[train_mask].copy()
@@ -201,7 +203,7 @@ def process_dataset(
         X_test = X_test.fillna(0)
 
     # Identify frequency-related features (Assuming column orders are the same for train and test)
-    freq_idx, other_idx = __identify_frequency_features(X_train.columns)
+    freq_idx, other_idx = __identify_frequency_features(X_train.columns, mute=mute)
 
     return (
         X_train,
@@ -213,3 +215,33 @@ def process_dataset(
         freq_idx,
         other_idx,
     )
+
+
+def get_min_max_sparam(X_train: pd.DataFrame, Y_train: pd.DataFrame):
+    s21_real_train = Y_train["S_deemb(2,1)_real"].values
+    s21_imag_train = Y_train["S_deemb(2,1)_imag"].values
+
+    X_train_s21 = X_train.copy()
+    X_train_s21["S21_real"] = s21_real_train
+    X_train_s21["S21_imag"] = s21_imag_train
+
+    # Calculate different bounds for real and imaginary parts
+    # For real part - tighter bounds due to problems with this component
+    real_p10 = np.percentile(s21_real_train, 10)  # type: ignore
+    real_p90 = np.percentile(s21_real_train, 90)  # type: ignore
+    real_range = real_p90 - real_p10
+    real_min = real_p10 - 0.2 * real_range  # Tighter bound for real
+    real_max = real_p90 + 0.2 * real_range
+
+    # For imaginary part - more relaxed bounds since it's behaving better
+    imag_p05 = np.percentile(s21_imag_train, 5)  # type: ignore
+    imag_p95 = np.percentile(s21_imag_train, 95)  # type: ignore
+    imag_range = imag_p95 - imag_p05
+    imag_min = imag_p05 - 0.3 * imag_range  # More relaxed bound
+    imag_max = imag_p95 + 0.3 * imag_range
+
+    print("Setting component-specific bounds:")
+    print(f"  Real: [{real_min:.6f}, {real_max:.6f}]")
+    print(f"  Imaginary: [{imag_min:.6f}, {imag_max:.6f}]")
+
+    return real_min, real_max, imag_min, imag_max

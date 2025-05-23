@@ -216,3 +216,104 @@ class ComponentModel(nn.Module):
 
         # Final processing
         return self.combined_layers(combined_attention)
+
+
+class ComponentModel2(nn.Module):
+    def __init__(
+        self,
+        depth: int,
+        base_width: int,
+        dropout_rate: float,
+        freq_indices: list[int],
+        other_indices: list[int],
+        activation: str,
+        model_name: str,
+        freq_depth: int = 2,
+        freq_width: int = 128,
+        other_depth: int = 2,
+        other_width: int = 128,
+        peak_multiplier: int = 4,
+    ):
+        super().__init__()
+        self.freq_indices = freq_indices
+        self.other_indices = other_indices
+
+        # Activation
+        activation_fn = {
+            "silu": nn.SiLU(),
+            "relu": nn.ReLU(),
+            "gelu": nn.GELU(),
+        }.get(activation.lower(), None)
+
+        if activation_fn is None:
+            raise ValueError(f"Unsupported activation function: {activation}")
+
+        # Frequency branch
+        self.freq_layers = self._build_branch(
+            len(freq_indices), freq_depth, freq_width, dropout_rate, activation_fn
+        )
+        # Other branch
+        self.other_layers = self._build_branch(
+            len(other_indices), other_depth, other_width, dropout_rate, activation_fn
+        )
+
+        combined_size = freq_width + other_width
+
+        # Attention
+        self.attention = nn.Sequential(
+            nn.Linear(combined_size, 64),
+            activation_fn,
+            nn.Linear(64, 2),
+            nn.Softmax(dim=1),
+        )
+
+        # Build symmetric pyramid hidden_sizes
+        widths = self._make_symmetric_hidden_sizes(depth, base_width, peak_multiplier)
+
+        # Combined MLP
+        layers = []
+        input_size = combined_size
+        for w in widths:
+            layers.append(nn.Linear(input_size, w))
+            layers.append(nn.BatchNorm1d(w))
+            layers.append(activation_fn)
+            layers.append(nn.Dropout(dropout_rate))
+            input_size = w
+
+        layers.append(nn.Linear(input_size, 1))
+        if model_name == "S21_real":
+            layers.append(nn.Tanh())
+        self.combined_layers = nn.Sequential(*layers)
+
+    def _make_symmetric_hidden_sizes(self, depth, base, peak_mult):
+        if depth % 2 == 0:
+            raise ValueError("Only odd depths supported for symmetric architecture")
+        mid = depth // 2
+        sizes = []
+        for i in range(depth):
+            dist = abs(i - mid)
+            factor = peak_mult / (2**dist)
+            sizes.append(int(base * factor))
+        return sizes
+
+    def _build_branch(self, in_dim, depth, width, dropout, activation_fn):
+        layers = []
+        for _ in range(depth):
+            layers.append(nn.Linear(in_dim, width))
+            layers.append(nn.BatchNorm1d(width))
+            layers.append(activation_fn)
+            layers.append(nn.Dropout(dropout))
+            in_dim = width
+        return nn.Sequential(*layers)
+
+    def forward(self, x):
+        freq = self.freq_layers(x[:, self.freq_indices])
+        other = self.other_layers(x[:, self.other_indices])
+        combined = torch.cat([freq, other], dim=1)
+
+        attn = self.attention(combined)
+        weighted = torch.cat(
+            [freq * attn[:, 0].unsqueeze(1), other * attn[:, 1].unsqueeze(1)], dim=1
+        )
+
+        return self.combined_layers(weighted)
